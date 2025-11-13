@@ -1,38 +1,40 @@
-# FLASK CHAT SERVER - MESSAGES RESET ON RESTART (Snapchat Style)
 from flask import Flask, request, jsonify
 from datetime import datetime
 
 app = Flask(__name__)
-
-# MESSAGES RESET EVERY TIME SERVER RESTARTS
-messages = []  # ← Fresh list on every deploy/run
+messages = []
+online_users = {}  # {name: last_seen_time}
 
 @app.route('/send', methods=['POST'])
-def send_message():
+def send():
     try:
         data = request.json
-        if 'user' in data and 'msg' in data:
-            ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            msg = {'ts': ts, 'user': data['user'], 'msg': data['msg']}
-            messages.append(msg)
-            return jsonify({'status': 'sent'}), 200
+        name = data['user']
+        msg = data['msg']
+        online_users[name] = datetime.now().timestamp()
+        if msg.strip():
+            messages.append({'ts': datetime.now().strftime("%Y-%m-%d %H:%M:%S"), 'user': name, 'msg': msg})
+        return jsonify({'status': 'ok'})
     except:
-        pass
-    return jsonify({'error': 'bad request'}), 400
+        return jsonify({'error': 'bad'}), 400
 
 @app.route('/poll', methods=['GET'])
-def poll_messages():
-    since = request.args.get('since', 0, type=int)
-    new_msgs = [m for m in messages 
-                if int(m['ts'].replace('-','').replace(' ','').replace(':','')) > since]
-    return jsonify({'messages': new_msgs})
+def poll():
+    since = request.args.get('since', '0')
+    since_num = int(since.replace('-','').replace(' ','').replace(':',''))
+    new_msgs = [m for m in messages if int(m['ts'].replace('-','').replace(' ','').replace(':','')) > since_num]
+    
+    # Clean old users (offline > 10s)
+    now = datetime.now().timestamp()
+    online = {k: v for k, v in online_users.items() if now - v < 10}
+    online_users.clear()
+    online_users.update(online)
+    
+    return jsonify({
+        'messages': new_msgs,
+        'online': list(online.keys())
+    })
 
 @app.route('/', methods=['GET'])
 def home():
-    return jsonify({
-        'status': 'Snapchat-style chat live!',
-        'note': 'Messages reset on every server restart!'
-    })
-
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+    return jsonify({'status': 'Snapchat Pro Live'})
